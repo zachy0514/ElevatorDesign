@@ -179,41 +179,6 @@ def write_positions_log(path: str | Path, timeline: list[list[int]]) -> None:
             writer.writerow([t, *positions])
 
 
-def write_passenger_log(path: str | Path, states: dict[str, PassengerState]) -> None:
-    out = Path(path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-
-    with out.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(
-            [
-                "id",
-                "request_time",
-                "pickup_time",
-                "dropoff_time",
-                "wait_time",
-                "travel_time",
-                "total_time",
-                "assigned_elevator",
-            ]
-        )
-
-        for pid in sorted(states.keys()):
-            s = states[pid]
-            writer.writerow(
-                [
-                    pid,
-                    s.request.time,
-                    s.pickup_time,
-                    s.dropoff_time,
-                    s.wait_time,
-                    s.travel_time,
-                    s.total_time,
-                    s.assigned_elevator,
-                ]
-            )
-
-
 def build_summary(states: dict[str, PassengerState]) -> str:
     metrics = build_metrics(states)
     above_avg_wait = sum(1 for value in metrics["wait_times"] if value > metrics["avg_wait"])

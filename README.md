@@ -57,10 +57,14 @@ Scheduler options:
 python compare_schedulers.py --input sample_requests.csv --num-elevators 3 --num-floors 60 --capacity 8
 ```
 
-### 3) Generate plots (optional)
+### 3) Interactive visualization (optional)
 ```bash
-python plot_results.py --positions output/elevator_positions.csv --passengers output/passenger_times.csv --output output/simulation_plots.png
+python visualize.py
 ```
+Opens `docs/index.html` — an animated presentation showing elevator movement,
+passenger status cards, Gantt timeline, and summary stats.
+
+**Live demo (GitHub Pages):** https://zachyang.github.io/ElevatorDesign
 
 ### 2) Run tests
 ```bash

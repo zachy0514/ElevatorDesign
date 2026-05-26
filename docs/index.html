@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Elevator Simulation</title>
+<style>
+:root {
+  --bg: #0f1117; --panel: #1a1d2e; --border: #2a2d45;
+  --accent: #5c6bc0; --accent2: #26a69a;
+  --text: #e8eaf6; --muted: #7986cb;
+  --pending: #546e7a; --waiting: #f57c00; --riding: #1976d2; --done: #388e3c;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif;
+       height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+header { padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
+         display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+header h1 { font-size: 1rem; font-weight: 600; }
+#time-badge { background: var(--accent); color: #fff; padding: 4px 16px;
+              border-radius: 20px; font-size: 0.95rem; font-weight: 700; min-width: 80px; text-align: center; }
+
+nav { display: flex; background: var(--panel); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+nav button { background: none; border: none; border-bottom: 3px solid transparent;
+             color: var(--muted); padding: 9px 22px; font-size: 0.88rem; cursor: pointer; transition: all .2s; }
+nav button.active { color: var(--text); border-bottom-color: var(--accent); }
+nav button:hover { color: var(--text); }
+
+main { flex: 1; overflow: hidden; }
+.view { display: none; height: 100%; padding: 14px; overflow-y: auto; }
+.view.active { display: flex; }
+
+/* Building */
+#view-building { flex-direction: row; gap: 14px; overflow: hidden; }
+#building-wrap { flex: 1; display: flex; background: var(--panel); border: 1px solid var(--border);
+                 border-radius: 8px; overflow: hidden; min-width: 0; }
+#floor-labels { display: flex; flex-direction: column; justify-content: space-between;
+                padding: 28px 6px 4px; min-width: 34px; border-right: 1px solid var(--border);
+                position: relative; }
+.fl-label { font-size: 0.6rem; color: var(--muted); text-align: right; position: absolute; right: 4px; }
+#shafts { display: flex; flex: 1; position: relative; }
+.shaft { flex: 1; position: relative; border-right: 1px solid var(--border); }
+.shaft:last-child { border-right: none; }
+.shaft-hdr { position: absolute; top: 6px; left: 0; right: 0; text-align: center;
+             font-size: 0.7rem; font-weight: 700; z-index: 5; }
+.elev-car { position: absolute; left: 15%; width: 70%; border-radius: 5px; z-index: 10;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: top .28s ease; font-size: 0.65rem; font-weight: 700; color: #fff; gap: 1px;
+            box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+.floor-dot { position: absolute; right: 4px; width: 7px; height: 7px; border-radius: 50%; z-index: 3; }
+.floor-dot.pickup  { background: var(--waiting); }
+.floor-dot.dropoff { background: var(--done); }
+.floor-line { position: absolute; left: 0; right: 0; border-top: 1px solid #1e2135; }
+
+#building-info { width: 210px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; }
+.icard { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.icard h3 { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+.elev-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; font-size: 0.82rem; }
+.elev-dot { width: 10px; height: 10px; border-radius: 3px; margin-top: 2px; flex-shrink: 0; }
+.elev-sub { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
+
+/* Passengers */
+#view-passengers { flex-wrap: wrap; flex-direction: row; gap: 10px; align-content: flex-start; }
+.pax-card { background: var(--panel); border: 2px solid var(--border); border-radius: 8px;
+            padding: 12px; width: 180px; transition: border-color .3s; }
+.pax-card.waiting { border-color: var(--waiting); }
+.pax-card.riding  { border-color: var(--riding); }
+.pax-card.done    { border-color: var(--done); }
+.pax-card.pending { border-color: var(--pending); }
+.pax-id   { font-size: 0.82rem; font-weight: 700; margin-bottom: 4px; }
+.pax-route { font-size: 0.88rem; color: var(--muted); margin-bottom: 6px; }
+.pax-badge { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 0.68rem;
+             font-weight: 700; text-transform: uppercase; margin-bottom: 6px; color: #fff; }
+.pax-badge.pending { background: var(--pending); }
+.pax-badge.waiting { background: var(--waiting); }
+.pax-badge.riding  { background: var(--riding); }
+.pax-badge.done    { background: var(--done); }
+.pax-meta { font-size: 0.72rem; color: var(--muted); line-height: 1.7; }
+
+/* Timeline */
+#view-timeline { flex-direction: column; }
+#tl-wrap { flex: 1; background: var(--panel); border: 1px solid var(--border);
+           border-radius: 8px; padding: 12px; overflow-x: auto; }
+
+/* Stats */
+#view-stats { flex-direction: row; gap: 14px; align-items: flex-start; }
+#stat-bigs { display: flex; flex-direction: column; gap: 10px; width: 160px; flex-shrink: 0; }
+.stat-big { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+            padding: 14px; text-align: center; }
+.stat-val { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
+.stat-lbl { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-top: 2px; }
+#bars-wrap { flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+#bars-wrap h3 { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; margin-bottom: 12px; }
+.bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.bar-lbl   { font-size: 0.72rem; color: var(--muted); width: 80px; text-align: right; flex-shrink: 0; }
+.bar-track { flex: 1; background: #1e2135; border-radius: 3px; height: 16px; position: relative; overflow: hidden; }
+.bar-wait  { position: absolute; left: 0; top: 0; height: 100%; background: var(--waiting); }
+.bar-ride  { position: absolute; top: 0; height: 100%; background: var(--riding); }
+.bar-num   { font-size: 0.68rem; color: var(--muted); width: 28px; flex-shrink: 0; }
+
+/* Controls */
+footer { padding: 9px 18px; background: var(--panel); border-top: 1px solid var(--border);
+         display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.btn  { background: var(--accent); color: #fff; border: none; border-radius: 6px;
+        padding: 5px 14px; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+.btn:hover { opacity: .85; }
+.btn.sec { background: var(--border); }
+#scrubber { flex: 1; accent-color: var(--accent); cursor: pointer; }
+.ft-label { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+#speed-sel { background: var(--panel); color: var(--text); border: 1px solid var(--border);
+             border-radius: 4px; padding: 3px 6px; font-size: 0.75rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="page-title">Elevator Simulation</h1>
+  <div id="time-badge">T = 0</div>
+</header>
+
+<nav>
+  <button class="active" onclick="switchTab('building',this)">🏢 Building</button>
+  <button onclick="switchTab('passengers',this)">👥 Passengers</button>
+  <button onclick="switchTab('timeline',this)">📊 Timeline</button>
+  <button onclick="switchTab('stats',this)">📈 Stats</button>
+</nav>
+
+<main>
+  <div id="view-building" class="view active">
+    <div id="building-wrap">
+      <div id="floor-labels"></div>
+      <div id="shafts"></div>
+    </div>
+    <div id="building-info">
+      <div class="icard"><h3>Elevators</h3><div id="elev-details"></div></div>
+      <div class="icard">
+        <h3>Legend</h3>
+        <div style="font-size:.76rem;line-height:2.1;color:var(--muted)">
+          <span style="color:var(--waiting)">●</span> Pickup floor<br>
+          <span style="color:var(--done)">●</span> Dropoff floor<br>
+          ↑ Up &nbsp;·&nbsp; ↓ Down &nbsp;·&nbsp; — Idle
+        </div>
+      </div>
+      <div class="icard"><h3>Counts</h3><div id="pax-counts" style="font-size:.78rem;line-height:2;color:var(--muted)"></div></div>
+    </div>
+  </div>
+
+  <div id="view-passengers" class="view"></div>
+
+  <div id="view-timeline" class="view">
+    <div id="tl-wrap"><svg id="tl-svg"></svg></div>
+  </div>
+
+  <div id="view-stats" class="view">
+    <div id="stat-bigs"></div>
+    <div id="bars-wrap"><h3>Per-passenger breakdown</h3><div id="bars-inner"></div></div>
+  </div>
+</main>
+
+<footer>
+  <button class="btn sec" onclick="restart()">↺</button>
+  <button class="btn sec" onclick="stepBack()">◀</button>
+  <button class="btn" id="play-btn" onclick="togglePlay()">▶ Play</button>
+  <button class="btn sec" onclick="stepForward()">▶</button>
+  <input type="range" id="scrubber" min="0" value="0" step="1">
+  <span class="ft-label" id="tick-info">0 / 0</span>
+  <span class="ft-label">Speed:</span>
+  <select id="speed-sel" onchange="intervalMs=+this.value">
+    <option value="700">0.5×</option>
+    <option value="350" selected>1×</option>
+    <option value="175">2×</option>
+    <option value="70">5×</option>
+    <option value="16">Max</option>
+  </select>
+</footer>
+
+<script>
+const DATA     = {"snapshots":[{"time":0,"elevators":[{"id":0,"floor":1,"direction":"IDLE","onboard":["alice"],"pickup_targets":[],"dropoff_targets":[8]},{"id":1,"floor":1,"direction":"IDLE","onboard":["bob"],"pickup_targets":[],"dropoff_targets":[5]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":null,"status":"riding"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":null,"status":"riding"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"},"david":{"source":7,"dest":2,"request_time":5,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":1,"elevators":[{"id":0,"floor":2,"direction":"UP","onboard":["alice"],"pickup_targets":[],"dropoff_targets":[8]},{"id":1,"floor":2,"direction":"UP","onboard":["bob"],"pickup_targets":[],"dropoff_targets":[5]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":null,"status":"riding"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":null,"status":"riding"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"},"david":{"source":7,"dest":2,"request_time":5,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":2,"elevators":[{"id":0,"floor":3,"direction":"UP","onboard":["alice","carol"],"pickup_targets":[],"dropoff_targets":[8,10]},{"id":1,"floor":3,"direction":"UP","onboard":["bob"],"pickup_targets":[],"dropoff_targets":[5]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":null,"status":"riding"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":null,"status":"riding"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":null,"status":"riding"},"david":{"source":7,"dest":2,"request_time":5,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":3,"elevators":[{"id":0,"floor":4,"direction":"UP","onboard":["alice","carol"],"pickup_targets":[],"dropoff_targets":[8,10]},{"id":1,"floor":4,"direction":"UP","onboard":["bob"],"pickup_targets":[],"dropoff_targets":[5]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":null,"status":"riding"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":null,"status":"riding"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":null,"status":"riding"},"david":{"source":7,"dest":2,"request_time":5,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":4,"elevators":[{"id":0,"floor":5,"direction":"UP","onboard":["alice","carol"],"pickup_targets":[],"dropoff_targets":[8,10]},{"id":1,"floor":5,"direction":"UP","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":null,"status":"riding"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":null,"status":"riding"},"david":{"source":7,"dest":2,"request_time":5,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":5,"elevators":[{"id":0,"floor":6,"direction":"UP","onboard":["alice","carol"],"pickup_targets":[],"dropoff_targets":[8,10]},{"id":1,"floor":5,"direction":"IDLE","onboard":[],"pickup_targets":[7],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":null,"status":"riding"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":null,"status":"riding"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":null,"dropoff_time":null,"status":"waiting"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":6,"elevators":[{"id":0,"floor":7,"direction":"UP","onboard":["alice","carol"],"pickup_targets":[],"dropoff_targets":[8,10]},{"id":1,"floor":6,"direction":"UP","onboard":[],"pickup_targets":[7],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":null,"status":"riding"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":null,"status":"riding"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":null,"dropoff_time":null,"status":"waiting"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":7,"elevators":[{"id":0,"floor":8,"direction":"UP","onboard":["carol"],"pickup_targets":[],"dropoff_targets":[10]},{"id":1,"floor":7,"direction":"UP","onboard":["david"],"pickup_targets":[],"dropoff_targets":[2]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":null,"status":"riding"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":null,"status":"riding"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":8,"elevators":[{"id":0,"floor":9,"direction":"UP","onboard":["carol"],"pickup_targets":[10],"dropoff_targets":[10]},{"id":1,"floor":6,"direction":"DOWN","onboard":["david"],"pickup_targets":[],"dropoff_targets":[2]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":null,"status":"riding"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":null,"status":"riding"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":null,"dropoff_time":null,"status":"waiting"}}},{"time":9,"elevators":[{"id":0,"floor":10,"direction":"UP","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":5,"direction":"DOWN","onboard":["david"],"pickup_targets":[],"dropoff_targets":[2]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":null,"status":"riding"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":10,"elevators":[{"id":0,"floor":9,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":4,"direction":"DOWN","onboard":["david"],"pickup_targets":[],"dropoff_targets":[2]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":null,"status":"riding"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":11,"elevators":[{"id":0,"floor":8,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":3,"direction":"DOWN","onboard":["david"],"pickup_targets":[],"dropoff_targets":[2]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":null,"status":"riding"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":12,"elevators":[{"id":0,"floor":7,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":2,"direction":"DOWN","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":12,"status":"done"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":13,"elevators":[{"id":0,"floor":6,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":2,"direction":"IDLE","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":12,"status":"done"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":14,"elevators":[{"id":0,"floor":5,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":2,"direction":"IDLE","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":12,"status":"done"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":15,"elevators":[{"id":0,"floor":4,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":2,"direction":"IDLE","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":12,"status":"done"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":16,"elevators":[{"id":0,"floor":3,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":2,"direction":"IDLE","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":12,"status":"done"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":17,"elevators":[{"id":0,"floor":2,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":2,"direction":"IDLE","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":12,"status":"done"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":18,"elevators":[{"id":0,"floor":1,"direction":"DOWN","onboard":[],"pickup_targets":[],"dropoff_targets":[]},{"id":1,"floor":2,"direction":"IDLE","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":12,"status":"done"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":18,"status":"done"}}}],"config":{"num_elevators":2,"num_floors":10,"scheduler":"nearest"}};
+const snaps    = DATA.snapshots;
+const CFG      = DATA.config;
+const N_FLOORS = CFG.num_floors;
+const N_ELEVS  = CFG.num_elevators;
+const PAX_IDS  = Object.keys(snaps[0].passengers).sort();
+const COLORS   = ['#5c6bc0','#26a69a','#ef5350','#ffa726','#ab47bc','#29b6f6'];
+const SHAFT_H  = 560;
+
+let tick = 0, playing = false, intervalMs = 350, timer = null;
+
+document.getElementById('page-title').textContent =
+  `Elevator Simulation — ${CFG.scheduler} · ${N_ELEVS} elevators · ${N_FLOORS} floors`;
+document.getElementById('scrubber').max = snaps.length - 1;
+
+function carH() { return Math.max(22, Math.floor(SHAFT_H / N_FLOORS) - 2); }
+function floorToTop(f) { return (1 - (f - 1) / (N_FLOORS - 1)) * (SHAFT_H - carH()); }
+
+function buildBuilding() {
+  const lbl = document.getElementById('floor-labels');
+  lbl.style.height = (SHAFT_H + 28) + 'px';
+  const step = N_FLOORS <= 10 ? 1 : N_FLOORS <= 20 ? 2 : N_FLOORS <= 40 ? 5 : 10;
+  for (let f = 1; f <= N_FLOORS; f++) {
+    if (f !== 1 && f !== N_FLOORS && f % step !== 0) continue;
+    const el = document.createElement('div');
+    el.className = 'fl-label';
+    el.textContent = f;
+    el.style.top = (28 + floorToTop(f) + carH() / 2 - 6) + 'px';
+    lbl.appendChild(el);
+  }
+
+  const shafts = document.getElementById('shafts');
+  shafts.style.height = (SHAFT_H + 28) + 'px';
+
+  for (let ei = 0; ei < N_ELEVS; ei++) {
+    const shaft = document.createElement('div');
+    shaft.className = 'shaft';
+    shaft.id = `shaft${ei}`;
+    shaft.style.height = '100%';
+
+    // Floor grid lines
+    for (let f = 1; f <= N_FLOORS; f++) {
+      const line = document.createElement('div');
+      line.className = 'floor-line';
+      line.style.top = (28 + floorToTop(f) + carH()) + 'px';
+      shaft.appendChild(line);
+    }
+
+    const hdr = document.createElement('div');
+    hdr.className = 'shaft-hdr';
+    hdr.textContent = `E${ei}`;
+    hdr.style.color = COLORS[ei % COLORS.length];
+    shaft.appendChild(hdr);
+
+    const car = document.createElement('div');
+    car.className = 'elev-car';
+    car.id = `car${ei}`;
+    car.style.background = COLORS[ei % COLORS.length];
+    car.style.height = carH() + 'px';
+    shaft.appendChild(car);
+
+    shafts.appendChild(shaft);
+  }
+}
+
+function buildPassengerCards() {
+  const view = document.getElementById('view-passengers');
+  const last = snaps[snaps.length - 1].passengers;
+  PAX_IDS.forEach(pid => {
+    const p = last[pid];
+    const card = document.createElement('div');
+    card.id = `pcard-${pid}`;
+    card.className = 'pax-card pending';
+    card.innerHTML = `
+      <div class="pax-id">${pid}</div>
+      <div class="pax-route">Floor ${p.source} → ${p.dest}</div>
+      <span class="pax-badge pending" id="pbadge-${pid}">pending</span>
+      <div class="pax-meta" id="pmeta-${pid}"></div>`;
+    view.appendChild(card);
+  });
+}
+
+function render(t) {
+  const snap = snaps[t];
+  document.getElementById('time-badge').textContent = `T = ${snap.time}`;
+  document.getElementById('tick-info').textContent = `${t} / ${snaps.length - 1}`;
+  document.getElementById('scrubber').value = t;
+  renderBuilding(snap);
+  renderPassengers(snap);
+  const active = document.querySelector('.view.active').id;
+  if (active === 'view-timeline') renderTimeline(t);
+  if (active === 'view-stats')    renderStats(t);
+}
+
+function renderBuilding(snap) {
+  document.querySelectorAll('.floor-dot').forEach(d => d.remove());
+
+  snap.elevators.forEach(e => {
+    const car = document.getElementById(`car${e.id}`);
+    car.style.top = (28 + floorToTop(e.floor)) + 'px';
+    const dir = e.direction === 'UP' ? '↑' : e.direction === 'DOWN' ? '↓' : '—';
+    car.innerHTML = `<span>${dir} Fl.${e.floor}</span><span>${e.onboard.length}p</span>`;
+
+    const shaft = document.getElementById(`shaft${e.id}`);
+    const placeDot = (floor, cls) => {
+      const dot = document.createElement('div');
+      dot.className = `floor-dot ${cls}`;
+      dot.style.top = (28 + floorToTop(floor) + carH() / 2 - 3.5) + 'px';
+      shaft.appendChild(dot);
+    };
+    e.pickup_targets.forEach(f => placeDot(f, 'pickup'));
+    e.dropoff_targets.forEach(f => placeDot(f, 'dropoff'));
+  });
+
+  document.getElementById('elev-details').innerHTML = snap.elevators.map(e => {
+    const dir = e.direction === 'UP' ? '↑' : e.direction === 'DOWN' ? '↓' : '—';
+    const c = COLORS[e.id % COLORS.length];
+    return `<div class="elev-row">
+      <div class="elev-dot" style="background:${c}"></div>
+      <div>
+        <div>Floor <strong>${e.floor}</strong> ${dir}</div>
+        <div class="elev-sub">${e.onboard.length ? e.onboard.join(', ') : 'empty'}</div>
+        ${e.pickup_targets.length  ? `<div class="elev-sub">Pickup: ${e.pickup_targets.join(', ')}</div>` : ''}
+        ${e.dropoff_targets.length ? `<div class="elev-sub">Drop: ${e.dropoff_targets.join(', ')}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  const counts = {pending:0, waiting:0, riding:0, done:0};
+  Object.values(snap.passengers).forEach(p => counts[p.status]++);
+  document.getElementById('pax-counts').innerHTML =
+    `<span style="color:var(--pending)">● Pending</span>: ${counts.pending}<br>` +
+    `<span style="color:var(--waiting)">● Waiting</span>: ${counts.waiting}<br>` +
+    `<span style="color:var(--riding)">● Riding</span>: ${counts.riding}<br>` +
+    `<span style="color:var(--done)">● Done</span>: ${counts.done}`;
+}
+
+function renderPassengers(snap) {
+  PAX_IDS.forEach(pid => {
+    const p = snap.passengers[pid];
+    document.getElementById(`pcard-${pid}`).className = `pax-card ${p.status}`;
+    const badge = document.getElementById(`pbadge-${pid}`);
+    badge.className = `pax-badge ${p.status}`;
+    badge.textContent = p.status;
+    let m = `Requested T=${p.request_time}`;
+    if (p.assigned !== null)     m += `<br>Elevator: E${p.assigned}`;
+    if (p.pickup_time !== null)  m += `<br>Boarded T=${p.pickup_time} (waited ${p.pickup_time - p.request_time})`;
+    if (p.dropoff_time !== null) m += `<br>Arrived T=${p.dropoff_time} (rode ${p.dropoff_time - p.pickup_time})`;
+    document.getElementById(`pmeta-${pid}`).innerHTML = m;
+  });
+}
+
+function renderTimeline(upToTick) {
+  const last = snaps[snaps.length - 1];
+  const maxTime = last.time;
+  const curTime = snaps[Math.min(upToTick, snaps.length - 1)].time;
+  const wrap = document.getElementById('tl-wrap');
+  const W = Math.max(600, wrap.clientWidth - 30);
+  const rowH = 32, padL = 90, padR = 16, padT = 28, padB = 36;
+  const H = padT + PAX_IDS.length * rowH + padB;
+  const tx = t => padL + (t / (maxTime || 1)) * (W - padL - padR);
+
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">`;
+  s += `<line x1="${padL}" y1="${padT}" x2="${W-padR}" y2="${padT}" stroke="#2a2d45" stroke-width="1"/>`;
+
+  const step = Math.max(1, Math.ceil(maxTime / 12));
+  for (let t = 0; t <= maxTime; t += step) {
+    const x = tx(t);
+    s += `<line x1="${x}" y1="${padT}" x2="${x}" y2="${H-padB}" stroke="#1e2135" stroke-width="1"/>`;
+    s += `<text x="${x}" y="${padT-5}" text-anchor="middle" fill="#7986cb" font-size="10">${t}</text>`;
+  }
+  s += `<line x1="${tx(curTime)}" y1="${padT}" x2="${tx(curTime)}" y2="${H-padB}" stroke="#5c6bc0" stroke-width="2" stroke-dasharray="4,3"/>`;
+
+  PAX_IDS.forEach((pid, i) => {
+    const p = last.passengers[pid];
+    const mid = padT + i * rowH + rowH / 2;
+    s += `<text x="${padL-6}" y="${mid+4}" text-anchor="end" fill="#7986cb" font-size="11">${pid}</text>`;
+
+    if (p.pickup_time !== null) {
+      s += `<rect x="${tx(p.request_time)}" y="${mid-7}" width="${Math.max(2,tx(p.pickup_time)-tx(p.request_time))}" height="14" rx="3" fill="#f57c00" opacity=".9"/>`;
+    } else {
+      s += `<rect x="${tx(p.request_time)}" y="${mid-7}" width="${Math.max(2,tx(curTime)-tx(p.request_time))}" height="14" rx="3" fill="#f57c00" opacity=".4"/>`;
+    }
+    if (p.pickup_time !== null && p.dropoff_time !== null) {
+      s += `<rect x="${tx(p.pickup_time)}" y="${mid-7}" width="${Math.max(2,tx(p.dropoff_time)-tx(p.pickup_time))}" height="14" rx="3" fill="#1976d2" opacity=".9"/>`;
+    } else if (p.pickup_time !== null) {
+      s += `<rect x="${tx(p.pickup_time)}" y="${mid-7}" width="${Math.max(2,tx(curTime)-tx(p.pickup_time))}" height="14" rx="3" fill="#1976d2" opacity=".4"/>`;
+    }
+  });
+
+  const ly = H - padB + 14;
+  s += `<rect x="${padL}" y="${ly}" width="12" height="12" rx="2" fill="#f57c00"/>
+        <text x="${padL+15}" y="${ly+9}" fill="#7986cb" font-size="11">Waiting</text>
+        <rect x="${padL+75}" y="${ly}" width="12" height="12" rx="2" fill="#1976d2"/>
+        <text x="${padL+90}" y="${ly+9}" fill="#7986cb" font-size="11">Riding</text>
+        <line x1="${padL+155}" y1="${ly}" x2="${padL+155}" y2="${ly+12}" stroke="#5c6bc0" stroke-width="2" stroke-dasharray="4,3"/>
+        <text x="${padL+160}" y="${ly+9}" fill="#7986cb" font-size="11">Current time</text>`;
+  s += '</svg>';
+  wrap.innerHTML = s;
+}
+
+function renderStats(upToTick) {
+  const last = snaps[snaps.length - 1];
+  const done = Object.values(last.passengers).filter(p => p.dropoff_time !== null);
+  const bigs = document.getElementById('stat-bigs');
+  if (!done.length) { bigs.innerHTML = '<div class="stat-big"><div class="stat-lbl">No passengers done yet</div></div>'; return; }
+
+  const waits  = done.map(p => p.pickup_time  - p.request_time);
+  const totals = done.map(p => p.dropoff_time - p.request_time);
+  const avg = a => (a.reduce((s,v) => s+v, 0) / a.length).toFixed(1);
+
+  bigs.innerHTML = [
+    ['Avg Wait',  avg(waits)],
+    ['Max Wait',  Math.max(...waits)],
+    ['Avg Total', avg(totals)],
+    ['Max Total', Math.max(...totals)],
+    ['Served',    done.length],
+    ['Finish T',  last.time],
+  ].map(([l,v]) => `<div class="stat-big"><div class="stat-val">${v}</div><div class="stat-lbl">${l}</div></div>`).join('');
+
+  const maxT = Math.max(...totals, 1);
+  document.getElementById('bars-inner').innerHTML = PAX_IDS.map(pid => {
+    const p = last.passengers[pid];
+    if (p.pickup_time === null) return `<div class="bar-row"><span class="bar-lbl">${pid}</span><span style="font-size:.7rem;color:var(--muted)">waiting…</span></div>`;
+    const w = p.pickup_time - p.request_time;
+    const r = p.dropoff_time !== null ? p.dropoff_time - p.pickup_time : 0;
+    const wp = (w / maxT * 100).toFixed(1);
+    const rp = (r / maxT * 100).toFixed(1);
+    return `<div class="bar-row">
+      <span class="bar-lbl">${pid}</span>
+      <div class="bar-track">
+        <div class="bar-wait" style="width:${wp}%"></div>
+        <div class="bar-ride" style="left:${wp}%;width:${rp}%"></div>
+      </div>
+      <span class="bar-num">${w+r}</span>
+    </div>`;
+  }).join('');
+}
+
+function togglePlay() {
+  playing = !playing;
+  document.getElementById('play-btn').textContent = playing ? '⏸ Pause' : '▶ Play';
+  if (playing) { if (tick >= snaps.length - 1) tick = 0; step(); }
+  else clearTimeout(timer);
+}
+
+function step() {
+  if (!playing) return;
+  if (tick < snaps.length - 1) { tick++; render(tick); timer = setTimeout(step, intervalMs); }
+  else { playing = false; document.getElementById('play-btn').textContent = '▶ Play'; }
+}
+
+function restart() {
+  clearTimeout(timer); playing = false;
+  document.getElementById('play-btn').textContent = '▶ Play';
+  tick = 0; render(0);
+}
+
+function stepForward() {
+  clearTimeout(timer); playing = false;
+  document.getElementById('play-btn').textContent = '▶ Play';
+  if (tick < snaps.length - 1) { tick++; render(tick); }
+}
+
+function stepBack() {
+  clearTimeout(timer); playing = false;
+  document.getElementById('play-btn').textContent = '▶ Play';
+  if (tick > 0) { tick--; render(tick); }
+}
+
+document.getElementById('scrubber').addEventListener('input', e => {
+  clearTimeout(timer); playing = false;
+  document.getElementById('play-btn').textContent = '▶ Play';
+  tick = +e.target.value; render(tick);
+});
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(`view-${name}`).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'timeline') renderTimeline(tick);
+  if (name === 'stats')    renderStats(tick);
+}
+
+buildBuilding();
+buildPassengerCards();
+render(0);
+</script>
+</body>
+</html>

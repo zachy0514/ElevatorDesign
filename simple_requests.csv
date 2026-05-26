@@ -1,0 +1,6 @@
+time,id,source,dest
+0,alice,1,8
+0,bob,1,5
+2,carol,3,10
+5,david,7,2
+8,eve,10,1

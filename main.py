@@ -6,7 +6,6 @@ from elevator_sim.simulation import (
     SimulationConfig,
     build_summary,
     load_requests_from_csv,
-    write_passenger_log,
     write_positions_log,
     write_summary,
 )
@@ -25,7 +24,6 @@ def parse_args() -> argparse.Namespace:
         help="Scheduling algorithm",
     )
     parser.add_argument("--positions-log", default="output/elevator_positions.csv")
-    parser.add_argument("--passenger-log", default="output/passenger_times.csv")
     parser.add_argument("--summary-log", default="output/summary.txt")
     return parser.parse_args()
 
@@ -44,7 +42,6 @@ def main() -> None:
     result = simulation.run(requests)
 
     write_positions_log(args.positions_log, result.positions_timeline)
-    write_passenger_log(args.passenger_log, result.passenger_states)
 
     summary_text = build_summary(result.passenger_states)
     write_summary(args.summary_log, summary_text)
@@ -53,7 +50,6 @@ def main() -> None:
     print(f"Scheduler: {args.scheduler}")
     print(f"Finished at time unit: {result.finished_at_time}")
     print(f"Positions log: {args.positions_log}")
-    print(f"Passenger log: {args.passenger_log}")
     print(f"Summary: {args.summary_log}")
 
 
