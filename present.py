@@ -1,4 +1,94 @@
-<!DOCTYPE html>
+"""
+present.py — Interview presentation + live elevator visualization.
+
+Usage:
+    python present.py
+    python present.py --input simple_requests.csv --num-elevators 2 --num-floors 10
+"""
+
+import argparse
+import json
+from pathlib import Path
+
+from elevator_sim.models import PassengerState
+from elevator_sim.scheduler import create_scheduler
+from elevator_sim.simulation import (
+    ElevatorSimulation,
+    SimulationConfig,
+    SimulationResult,
+    load_requests_from_csv,
+)
+
+
+class CapturingSimulation(ElevatorSimulation):
+    def __init__(self, config, scheduler=None):
+        super().__init__(config, scheduler)
+        self.snapshots: list[dict] = []
+
+    def run(self, requests) -> SimulationResult:
+        requests_sorted = sorted(requests, key=lambda r: (r.time, r.passenger_id))
+        states = {r.passenger_id: PassengerState(request=r) for r in requests_sorted}
+        waiting_by_elevator = {e.elevator_id: [] for e in self.elevators}
+        next_request_idx = 0
+        current_time = 0
+        positions_timeline: list[list[int]] = []
+
+        while True:
+            positions_timeline.append([e.current_floor for e in self.elevators])
+            next_request_idx = self._assign_new_requests(
+                current_time, next_request_idx, requests_sorted, states, waiting_by_elevator
+            )
+            self._process_stops(current_time, states, waiting_by_elevator)
+            self._snapshot(current_time, states)
+
+            all_done = all(s.dropoff_time is not None for s in states.values())
+            no_future = next_request_idx >= len(requests_sorted)
+            if all_done and no_future:
+                return SimulationResult(
+                    finished_at_time=current_time,
+                    passenger_states=states,
+                    positions_timeline=positions_timeline,
+                )
+
+            for elevator in self.elevators:
+                elevator.move_one_tick()
+            current_time += 1
+
+    def _snapshot(self, t: int, states: dict) -> None:
+        self.snapshots.append({
+            "time": t,
+            "elevators": [
+                {
+                    "id": e.elevator_id,
+                    "floor": e.current_floor,
+                    "direction": e.direction.name,
+                    "onboard": list(e.onboard_passengers),
+                    "pickup_targets": sorted(e.pickup_floors),
+                    "dropoff_targets": sorted(e.dropoff_floors),
+                }
+                for e in self.elevators
+            ],
+            "passengers": {
+                pid: {
+                    "source": s.request.source,
+                    "dest": s.request.dest,
+                    "request_time": s.request.time,
+                    "assigned": s.assigned_elevator,
+                    "pickup_time": s.pickup_time,
+                    "dropoff_time": s.dropoff_time,
+                    "status": (
+                        "done"    if s.dropoff_time is not None else
+                        "riding"  if s.pickup_time  is not None else
+                        "waiting" if s.assigned_elevator is not None else
+                        "pending"
+                    ),
+                }
+                for pid, s in states.items()
+            },
+        })
+
+
+HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -623,7 +713,7 @@ requestAnimationFrame(function() {
 });
 
 /* ── Simulation ── */
-const DATA     = {"snapshots":[{"time":0,"elevators":[{"id":0,"floor":1,"direction":"IDLE","onboard":["alice"],"pickup_targets":[],"dropoff_targets":[8]},{"id":1,"floor":1,"direction":"IDLE","onboard":["bob"],"pickup_targets":[],"dropoff_targets":[5]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":null,"status":"riding"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":null,"status":"riding"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"},"david":{"source":7,"dest":2,"request_time":5,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":1,"elevators":[{"id":0,"floor":2,"direction":"UP","onboard":["alice"],"pickup_targets":[],"dropoff_targets":[8]},{"id":1,"floor":2,"direction":"UP","onboard":["bob"],"pickup_targets":[],"dropoff_targets":[5]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":null,"status":"riding"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":null,"status":"riding"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"},"david":{"source":7,"dest":2,"request_time":5,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":2,"elevators":[{"id":0,"floor":3,"direction":"UP","onboard":["alice","carol"],"pickup_targets":[],"dropoff_targets":[8,10]},{"id":1,"floor":3,"direction":"UP","onboard":["bob"],"pickup_targets":[],"dropoff_targets":[5]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":null,"status":"riding"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":null,"status":"riding"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":null,"status":"riding"},"david":{"source":7,"dest":2,"request_time":5,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":3,"elevators":[{"id":0,"floor":4,"direction":"UP","onboard":["alice","carol"],"pickup_targets":[],"dropoff_targets":[8,10]},{"id":1,"floor":4,"direction":"UP","onboard":["bob"],"pickup_targets":[],"dropoff_targets":[5]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":null,"status":"riding"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":null,"status":"riding"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":null,"status":"riding"},"david":{"source":7,"dest":2,"request_time":5,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":4,"elevators":[{"id":0,"floor":5,"direction":"UP","onboard":["alice","carol"],"pickup_targets":[],"dropoff_targets":[8,10]},{"id":1,"floor":5,"direction":"UP","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":null,"status":"riding"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":null,"status":"riding"},"david":{"source":7,"dest":2,"request_time":5,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":5,"elevators":[{"id":0,"floor":6,"direction":"UP","onboard":["alice","carol"],"pickup_targets":[],"dropoff_targets":[8,10]},{"id":1,"floor":5,"direction":"IDLE","onboard":[],"pickup_targets":[7],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":null,"status":"riding"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":null,"status":"riding"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":null,"dropoff_time":null,"status":"waiting"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":6,"elevators":[{"id":0,"floor":7,"direction":"UP","onboard":["alice","carol"],"pickup_targets":[],"dropoff_targets":[8,10]},{"id":1,"floor":6,"direction":"UP","onboard":[],"pickup_targets":[7],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":null,"status":"riding"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":null,"status":"riding"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":null,"dropoff_time":null,"status":"waiting"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":7,"elevators":[{"id":0,"floor":8,"direction":"UP","onboard":["carol"],"pickup_targets":[],"dropoff_targets":[10]},{"id":1,"floor":7,"direction":"UP","onboard":["david"],"pickup_targets":[],"dropoff_targets":[2]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":null,"status":"riding"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":null,"status":"riding"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":null,"pickup_time":null,"dropoff_time":null,"status":"pending"}}},{"time":8,"elevators":[{"id":0,"floor":9,"direction":"UP","onboard":["carol"],"pickup_targets":[10],"dropoff_targets":[10]},{"id":1,"floor":6,"direction":"DOWN","onboard":["david"],"pickup_targets":[],"dropoff_targets":[2]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":null,"status":"riding"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":null,"status":"riding"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":null,"dropoff_time":null,"status":"waiting"}}},{"time":9,"elevators":[{"id":0,"floor":10,"direction":"UP","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":5,"direction":"DOWN","onboard":["david"],"pickup_targets":[],"dropoff_targets":[2]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":null,"status":"riding"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":10,"elevators":[{"id":0,"floor":9,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":4,"direction":"DOWN","onboard":["david"],"pickup_targets":[],"dropoff_targets":[2]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":null,"status":"riding"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":11,"elevators":[{"id":0,"floor":8,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":3,"direction":"DOWN","onboard":["david"],"pickup_targets":[],"dropoff_targets":[2]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":null,"status":"riding"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":12,"elevators":[{"id":0,"floor":7,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":2,"direction":"DOWN","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":12,"status":"done"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":13,"elevators":[{"id":0,"floor":6,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":2,"direction":"IDLE","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":12,"status":"done"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":14,"elevators":[{"id":0,"floor":5,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":2,"direction":"IDLE","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":12,"status":"done"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":15,"elevators":[{"id":0,"floor":4,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":2,"direction":"IDLE","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":12,"status":"done"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":16,"elevators":[{"id":0,"floor":3,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":2,"direction":"IDLE","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":12,"status":"done"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":17,"elevators":[{"id":0,"floor":2,"direction":"DOWN","onboard":["eve"],"pickup_targets":[],"dropoff_targets":[1]},{"id":1,"floor":2,"direction":"IDLE","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":12,"status":"done"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":null,"status":"riding"}}},{"time":18,"elevators":[{"id":0,"floor":1,"direction":"DOWN","onboard":[],"pickup_targets":[],"dropoff_targets":[]},{"id":1,"floor":2,"direction":"IDLE","onboard":[],"pickup_targets":[],"dropoff_targets":[]}],"passengers":{"alice":{"source":1,"dest":8,"request_time":0,"assigned":0,"pickup_time":0,"dropoff_time":7,"status":"done"},"bob":{"source":1,"dest":5,"request_time":0,"assigned":1,"pickup_time":0,"dropoff_time":4,"status":"done"},"carol":{"source":3,"dest":10,"request_time":2,"assigned":0,"pickup_time":2,"dropoff_time":9,"status":"done"},"david":{"source":7,"dest":2,"request_time":5,"assigned":1,"pickup_time":7,"dropoff_time":12,"status":"done"},"eve":{"source":10,"dest":1,"request_time":8,"assigned":0,"pickup_time":9,"dropoff_time":18,"status":"done"}}}],"config":{"num_elevators":2,"num_floors":10,"scheduler":"nearest"}};
+const DATA     = __DATA_JSON__;
 const snaps    = DATA.snapshots;
 const CFG      = DATA.config;
 const N_FLOORS = CFG.num_floors;
@@ -854,3 +944,48 @@ render(0);
 </script>
 </body>
 </html>
+"""
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Generate interview presentation HTML")
+    p.add_argument("--input",         default="simple_requests.csv")
+    p.add_argument("--num-elevators", type=int, default=2)
+    p.add_argument("--num-floors",    type=int, default=10)
+    p.add_argument("--capacity",      type=int, default=4)
+    p.add_argument("--scheduler",     default="nearest",
+                   choices=["nearest", "strict_nearest", "round_robin"])
+    p.add_argument("--output",        default="docs/index.html")
+    return p.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    requests = load_requests_from_csv(args.input)
+    config = SimulationConfig(
+        num_elevators=args.num_elevators,
+        num_floors=args.num_floors,
+        max_passengers_per_elevator=args.capacity,
+    )
+    sim = CapturingSimulation(config, scheduler=create_scheduler(args.scheduler))
+    sim.run(requests)
+
+    data = {
+        "snapshots": sim.snapshots,
+        "config": {
+            "num_elevators": args.num_elevators,
+            "num_floors": args.num_floors,
+            "scheduler": args.scheduler,
+        },
+    }
+    html = HTML.replace("__DATA_JSON__", json.dumps(data, separators=(",", ":")))
+
+    out = Path(args.output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    print(f"Wrote: {out}")
+    print(f"Open:  {out.resolve()}")
+
+
+if __name__ == "__main__":
+    main()
