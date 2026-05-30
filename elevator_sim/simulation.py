@@ -143,6 +143,10 @@ class ElevatorSimulation:
                 states[pid].request.source
                 for pid in waiting_by_elevator[elevator.elevator_id]
                 if states[pid].pickup_time is None
+                and (
+                    states[pid].request.source != elevator.current_floor
+                    or elevator.load < elevator.capacity
+                )
             }
 
 
