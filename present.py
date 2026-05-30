@@ -505,8 +505,40 @@ body{
     </div>
   </div>
 
-  <!-- 5 · SCAN -->
+  <!-- 5 · Schedulers -->
   <div class="slide" id="slide-5">
+    <h2>Schedulers</h2>
+    <div class="sub">All three answer one question: which elevator do we send for this request? — Multiple schedulers were listed as a bonus item in the spec; all three are implemented and compared via <span class="mono">compare_schedulers.py</span></div>
+    <ul>
+      <li>
+        <div class="li-title">nearest <span class="tag">default</span></div>
+        <div class="code" style="margin-top:10px;">
+          <div class="code-bar"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-inner">score = distance_to_pickup + (pending_stops × 2)  →  lowest wins</div>
+        </div>
+        <div class="li-sub">Penalizes busy elevators. Balances response speed with workload fairness.</div>
+      </li>
+      <li>
+        <div class="li-title">strict_nearest</div>
+        <div class="code" style="margin-top:10px;">
+          <div class="code-bar"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-inner">min(elevators, key=lambda e: abs(e.floor - request.source))</div>
+        </div>
+        <div class="li-sub">Distance only. Can overload the closest elevator while others sit idle.</div>
+      </li>
+      <li>
+        <div class="li-title">round_robin</div>
+        <div class="code" style="margin-top:10px;">
+          <div class="code-bar"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
+          <div class="code-inner">elevators[counter % N];  counter += 1</div>
+        </div>
+        <div class="li-sub">Maximum fairness. Ignores location entirely.</div>
+      </li>
+    </ul>
+  </div>
+
+  <!-- 6 · SCAN -->
+  <div class="slide" id="slide-6">
     <h2>SCAN — Elevator Movement</h2>
     <div class="sub">Commit to the current direction before reversing — like a scanner head sweeping across a page</div>
     <div class="two-col">
@@ -536,38 +568,6 @@ body{
         SCAN finishes the sweep first. Everyone going the same direction is served before the elevator reverses.</p>
       </div>
     </div>
-  </div>
-
-  <!-- 6 · Schedulers -->
-  <div class="slide" id="slide-6">
-    <h2>Schedulers</h2>
-    <div class="sub">All three answer one question: which elevator do we send for this request? — Multiple schedulers were listed as a bonus item in the spec; all three are implemented and compared via <span class="mono">compare_schedulers.py</span></div>
-    <ul>
-      <li>
-        <div class="li-title">nearest <span class="tag">default</span></div>
-        <div class="code" style="margin-top:10px;">
-          <div class="code-bar"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
-          <div class="code-inner">score = distance_to_pickup + (pending_stops × 2)  →  lowest wins</div>
-        </div>
-        <div class="li-sub">Penalizes busy elevators. Balances response speed with workload fairness.</div>
-      </li>
-      <li>
-        <div class="li-title">strict_nearest</div>
-        <div class="code" style="margin-top:10px;">
-          <div class="code-bar"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
-          <div class="code-inner">min(elevators, key=lambda e: abs(e.floor - request.source))</div>
-        </div>
-        <div class="li-sub">Distance only. Can overload the closest elevator while others sit idle.</div>
-      </li>
-      <li>
-        <div class="li-title">round_robin</div>
-        <div class="code" style="margin-top:10px;">
-          <div class="code-bar"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
-          <div class="code-inner">elevators[counter % N];  counter += 1</div>
-        </div>
-        <div class="li-sub">Maximum fairness. Ignores location entirely.</div>
-      </li>
-    </ul>
   </div>
 
   <!-- 7 · Trade-offs -->
