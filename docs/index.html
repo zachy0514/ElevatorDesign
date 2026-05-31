@@ -696,7 +696,7 @@ function buildInlinePaxList() {
     row.className = 'ipax-row pending';
     row.innerHTML =
       '<span class="ipax-name">' + pid + '</span>' +
-      '<span class="ipax-route">F' + p.source + ' → F' + p.dest + '</span>' +
+      '<span class="ipax-route">F' + p.source + ' → F' + p.dest + ' · T=' + snaps[0].passengers[pid].request_time + '</span>' +
       '<span class="ipax-st pending" id="ist-' + pid + '">pending</span>';
     list.appendChild(row);
   });
