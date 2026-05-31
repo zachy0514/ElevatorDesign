@@ -594,6 +594,10 @@ body{
         <div class="li-title">No zone-based routing</div>
         <div class="li-sub">All elevators serve all floors — wasteful in tall buildings. Fix: pin elevators to floor ranges with a dedicated express elevator strategy.</div>
       </li>
+      <li>
+        <div class="li-title">No stress testing</div>
+        <div class="li-sub">The test suite only covers basic correctness on small inputs. High passenger volume, tight capacity, or edge cases like all passengers requesting the same floor are untested — exactly the conditions that expose scheduling bugs.</div>
+      </li>
     </ul>
   </div>
 

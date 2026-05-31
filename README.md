@@ -109,3 +109,5 @@ The movement engine itself is direction-aware (it continues in the current direc
 **Zone-based routing:** In tall buildings, pin elevators to floor ranges (e.g. floors 1–20, 21–40) so they don't waste time traveling the full height for every request.
 
 **Dynamic reassignment:** Once assigned, a passenger is locked to their elevator even if a much better one becomes free nearby. This would allow re-evaluating assignments each tick and switching if it'd save significant time.
+
+**Stress testing:** The test suite only covers basic correctness on small inputs. There are no stress tests with high passenger volume, tight capacity, or edge cases like all passengers requesting the same floor simultaneously. These are exactly the conditions that expose scheduling bugs — such as the capacity deadlock that only triggers when an elevator is full at a pickup floor.
