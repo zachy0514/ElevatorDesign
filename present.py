@@ -197,6 +197,39 @@ body{
 /* ── Two-column grid ── */
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;width:100%;}
 
+/* ── Communication diagram ── */
+.comm-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;margin-top:22px;}
+.comm-row{display:flex;align-items:center;width:100%;gap:10px;}
+.comm-box{
+  flex:1;background:var(--surface2);border:1px solid var(--border);
+  border-radius:10px;padding:16px 18px;text-align:center;position:relative;overflow:hidden;
+}
+.comm-box::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,var(--accent),rgba(129,140,248,.3),transparent);
+}
+.comm-box-title{font-size:0.95rem;font-weight:700;color:var(--text);margin-bottom:6px;}
+.comm-box-sub{font-size:0.8rem;color:var(--muted);line-height:1.6;}
+.comm-center{
+  flex:1.3;background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.3);
+  border-radius:12px;padding:16px 20px;text-align:center;
+}
+.comm-center-title{font-size:0.75rem;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;}
+.comm-set{
+  display:inline-block;margin:3px;padding:4px 14px;border-radius:5px;
+  background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.25);
+  font-family:'Cascadia Code','Fira Code',monospace;font-size:0.82rem;color:var(--teal);
+}
+.comm-arrow{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:4px;flex-shrink:0;padding:0 4px;
+}
+.comm-arrow-label{font-size:0.75rem;color:var(--accent2);white-space:nowrap;font-weight:600;}
+.comm-arrow-line{width:36px;height:1px;background:rgba(99,102,241,.5);}
+.comm-down{display:flex;flex-direction:column;align-items:center;gap:3px;}
+.comm-down-line{width:1px;height:22px;background:rgba(99,102,241,.4);}
+.comm-down-label{font-size:0.75rem;color:var(--accent2);font-weight:600;}
+
 /* ── Glassmorphism cards ── */
 .card{
   background:var(--surface);border:1px solid var(--border);
@@ -423,7 +456,7 @@ body{
       <div class="stat-chip"><div class="val">SCAN</div><div class="lbl">Movement Algo</div></div>
       <div class="stat-chip"><div class="val">3</div><div class="lbl">Schedulers</div></div>
       <div class="stat-chip"><div class="val">0</div><div class="lbl">Future Peeks</div></div>
-      <div class="stat-chip"><div class="val">4–5h</div><div class="lbl">Time Spent</div></div>
+      <div class="stat-chip"><div class="val">5–6h</div><div class="lbl">Time Spent</div></div>
     </div>
   </div>
 
@@ -434,19 +467,19 @@ body{
     <ul>
       <li>
         <div class="li-title">Serve all requests eventually</div>
-        <div class="li-sub">Every passenger must be picked up and dropped off — no one waits indefinitely. This is a correctness floor, not an optimization goal. The simulation cannot terminate until all passengers are served.</div>
+        <div class="li-sub">No one waits forever — correctness floor, not an optimization goal.</div>
       </li>
       <li>
         <div class="li-title">Minimize total_time = wait_time + travel_time</div>
-        <div class="li-sub">Unlike a traditional elevator where passengers only press Up or Down, destination dispatch means both floors are known at request time. That gives the scheduler full information to make a smarter assignment decision upfront rather than figuring it out on the fly.</div>
+        <div class="li-sub">Both floors known at request time — scheduler has full information to assign optimally upfront.</div>
       </li>
       <li>
         <div class="li-title">Honor elevator constraints: capacity and direction logic</div>
-        <div class="li-sub">Elevators have a maximum passenger count that must be respected at boarding time. Movement follows the SCAN algorithm — an elevator commits to its current direction and finishes the sweep before reversing, rather than thrashing back and forth.</div>
+        <div class="li-sub">Max passenger count enforced at boarding. Movement follows SCAN — commit to direction before reversing.</div>
       </li>
       <li>
         <div class="li-title">No peeking at future requests</div>
-        <div class="li-sub">The simulation only sees requests as they arrive in real time. Each tick only admits requests whose timestamp matches the current tick — even if the input file has future entries already loaded in memory, they are never read ahead of schedule.</div>
+        <div class="li-sub">Only admit requests where <span class="mono">time == current_tick</span>. Future entries are never read ahead.</div>
       </li>
     </ul>
   </div>
@@ -458,19 +491,54 @@ body{
     <div class="two-col">
       <div class="card">
         <h3>models.py — Data &amp; Physics</h3>
-        <p>Defines the core data model. PassengerRequest is frozen — it never changes after submission. PassengerState tracks the mutable journey (assigned, boarded, dropped off). Elevator owns the SCAN movement logic and capacity. The Direction enum drives which targets are considered next.</p>
+        <p>PassengerRequest is frozen — never changes. PassengerState tracks the mutable journey. Elevator owns SCAN movement and capacity.</p>
       </div>
       <div class="card">
         <h3>scheduler.py — Assignment</h3>
-        <p>Answers one question: which elevator should serve this passenger? Defined as a Protocol so any strategy can be swapped in. Three implementations: NearestCar (distance + workload), StrictNearest (distance only), and RoundRobin (rotation). All produce the same output — an elevator ID.</p>
+        <p>Defined as a Protocol — any strategy swaps in without touching anything else. Returns one elevator ID.</p>
       </div>
       <div class="card">
         <h3>simulation.py — Engine</h3>
-        <p>Owns the main tick loop and coordinates everything. _assign_new_requests admits passengers and calls the scheduler. _process_stops handles boarding and alighting each tick. Also writes the positions log and summary stats to disk when the simulation ends.</p>
+        <p>Owns the tick loop. Calls the scheduler, runs _process_stops each tick, writes outputs.</p>
       </div>
       <div class="card">
         <h3>main.py — CLI</h3>
-        <p>Thin entrypoint that wires everything together. Accepts --scheduler, --num-elevators, --num-floors, and --capacity as arguments. Loads the CSV, constructs the simulation, runs it, and writes outputs to the output/ directory.</p>
+        <p>Thin entrypoint. Loads CSV, wires arguments, runs the simulation.</p>
+      </div>
+    </div>
+
+    <!-- Communication diagram -->
+    <div class="comm-wrap">
+      <div class="comm-row">
+        <div class="comm-box">
+          <div class="comm-box-title">scheduler.py</div>
+          <div class="comm-box-sub">writes pickup_floors<br>reads workload on assign</div>
+        </div>
+        <div class="comm-arrow">
+          <div class="comm-arrow-label">writes →</div>
+          <div class="comm-arrow-line"></div>
+        </div>
+        <div class="comm-center">
+          <div class="comm-center-title">Elevator Object</div>
+          <div><span class="comm-set">pickup_floors</span><span class="comm-set">dropoff_floors</span></div>
+        </div>
+        <div class="comm-arrow">
+          <div class="comm-arrow-label">← rebuilds</div>
+          <div class="comm-arrow-line"></div>
+        </div>
+        <div class="comm-box">
+          <div class="comm-box-title">_process_stops</div>
+          <div class="comm-box-sub">simulation.py<br>rebuilds both sets each tick</div>
+        </div>
+      </div>
+      <div class="comm-down">
+        <div class="comm-down-line"></div>
+        <div class="comm-down-label">↓ reads</div>
+        <div class="comm-down-line"></div>
+      </div>
+      <div class="comm-box" style="max-width:360px;">
+        <div class="comm-box-title">choose_next_target — models.py</div>
+        <div class="comm-box-sub">reads both sets · picks next floor · no knowledge of passengers</div>
       </div>
     </div>
   </div>
@@ -484,28 +552,28 @@ body{
         <div class="tl-node">1</div>
         <div class="tl-body">
           <div class="tl-title">Record positions</div>
-          <div class="tl-sub">Snapshot every elevator's current floor before anything moves. This ensures the log captures where elevators actually were at time T, not where they ended up after moving — which matters for accurate replay and debugging.</div>
+          <div class="tl-sub">Before anything moves — log captures where elevators were at T, not after.</div>
         </div>
       </div>
       <div class="tl-item">
         <div class="tl-node">2</div>
         <div class="tl-body">
           <div class="tl-title">Assign new requests</div>
-          <div class="tl-sub">Scan the request list for any passenger whose arrival time equals the current tick. Each one is handed to the scheduler, which picks an elevator and locks in the assignment. The passenger's source floor is immediately added to that elevator's pickup targets. Requests beyond the current tick are never read — this is how no-peek is enforced.</div>
+          <div class="tl-sub">Admit requests where <span class="mono">time == current_tick</span>. Scheduler picks an elevator, source floor added to pickup targets.</div>
         </div>
       </div>
       <div class="tl-item">
         <div class="tl-node">3</div>
         <div class="tl-body">
           <div class="tl-title">Process stops — dropoffs first, then pickups</div>
-          <div class="tl-sub">Every elevator checks its current floor. First, anyone whose destination matches alights and frees their seat. Then, waiting passengers at that floor board in arrival order, up to capacity. Dropoffs run before pickups deliberately — so a seat freed this tick is immediately available to a new boarder in the same tick, rather than making them wait another full loop.</div>
+          <div class="tl-sub">Dropoffs before boardings — freed seats are available to new boarders in the same tick.</div>
         </div>
       </div>
       <div class="tl-item">
         <div class="tl-node">4</div>
         <div class="tl-body">
           <div class="tl-title">Move elevators</div>
-          <div class="tl-sub">Each elevator advances one floor toward its next SCAN target. Before moving, the simulation checks if both conditions are true: all passengers have been dropped off, and no future requests remain. Only when both are satisfied does the loop terminate — one condition alone is not enough.</div>
+          <div class="tl-sub">Advance one floor. Terminate only when all dropped off AND no future requests remain.</div>
         </div>
       </div>
     </div>
@@ -526,7 +594,7 @@ body{
           <div class="code-bar"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
           <div class="code-inner">score = distance_to_pickup + (pending_stops × 2)  →  lowest wins</div>
         </div>
-        <div class="li-sub">The workload penalty (×2) stops the closest elevator from being assigned indefinitely — without it, a nearby elevator with five pending stops would always win over an idle one slightly further away, even though the idle one would arrive first. The multiplier makes workload count enough to actually change the decision.</div>
+        <div class="li-sub">×2 penalty prevents overloading the nearest car — workload matters enough to change the decision.</div>
       </li>
       <li>
         <div class="li-title">strict_nearest</div>
@@ -534,7 +602,7 @@ body{
           <div class="code-bar"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
           <div class="code-inner">min(elevators, key=lambda e: abs(e.floor - request.source))</div>
         </div>
-        <div class="li-sub">Pure distance — no workload awareness. Simple and fast, but can pile requests onto one elevator when multiple arrive simultaneously near the same car, while others sit idle across the building. Useful as a baseline to measure how much the workload penalty actually helps.</div>
+        <div class="li-sub">Distance only. Can pile requests onto one elevator while others sit idle.</div>
       </li>
       <li>
         <div class="li-title">round_robin</div>
@@ -542,7 +610,7 @@ body{
           <div class="code-bar"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div>
           <div class="code-inner">elevators[counter % N];  counter += 1</div>
         </div>
-        <div class="li-sub">Ignores position entirely and rotates assignments in order. No single elevator ever gets more than its share of requests, but it may send an elevator from floor 60 to pick up someone on floor 1 when another car is already there. Acts as a fairness lower bound — if nearest-car only beats this by a small margin, the spatial heuristic isn't adding much value.</div>
+        <div class="li-sub">Rotates regardless of position. Fairness lower bound — shows how much spatial awareness actually helps.</div>
       </li>
     </ul>
   </div>
@@ -556,15 +624,15 @@ body{
         <ul>
           <li>
             <div class="li-title">Going UP</div>
-            <div class="li-sub">Pick the lowest target floor that is at or above the current position — keep moving up, serve the next stop in line, never reverse early</div>
+            <div class="li-sub">Lowest target ≥ current floor — never reverse early.</div>
           </li>
           <li>
             <div class="li-title">Going DOWN</div>
-            <div class="li-sub">Pick the highest target floor that is at or below the current position — mirror image of going up, commit to the downward sweep until it's exhausted</div>
+            <div class="li-sub">Highest target ≤ current floor — mirror of going up.</div>
           </li>
           <li>
             <div class="li-title">Idle</div>
-            <div class="li-sub">No direction set yet — pick the nearest target by absolute distance to get moving as quickly as possible</div>
+            <div class="li-sub">No direction yet — nearest target by absolute distance.</div>
           </li>
         </ul>
         <div class="code" style="margin-top:14px;">
@@ -574,8 +642,7 @@ body{
       </div>
       <div class="card">
         <h3>Why SCAN?</h3>
-        <p>Always-nearest causes thrashing — if there are targets both above and below, the elevator reverses direction every single tick and never makes progress in either direction.<br><br>
-        SCAN commits to one direction until it runs out of targets that way, then reverses. Everyone traveling in the same direction gets served in one sweep, which is both more efficient and prevents any floor from being skipped indefinitely.</p>
+        <p>Always-nearest causes thrashing — reverses every tick, never makes progress.<br><br>SCAN commits to one direction and serves everyone going that way before reversing.</p>
       </div>
     </div>
   </div>
@@ -586,23 +653,23 @@ body{
     <ul>
       <li>
         <div class="li-title">No physics — 1 tick = 1 floor, always</div>
-        <div class="li-sub">This is the biggest simplification. In reality an elevator accelerates, cruises, then decelerates — it cannot stop at every floor at full speed, and door open/close takes real time. In a production system I'd model distinct states: accelerating, cruising, decelerating, door open, boarding, door close. This changes scheduling decisions significantly because stopping at an intermediate floor has a real cost, whereas passing through it does not.</div>
+        <div class="li-sub">Real elevators accelerate, decelerate, and have door time. Stopping costs more than passing through — ignored here.</div>
       </li>
       <li>
         <div class="li-title">Scheduler ignores capacity at assignment time</div>
-        <div class="li-sub">The scheduler picks an elevator based on distance and workload, but never checks whether it will actually have room when it arrives. A full elevator can be assigned a new passenger, travel all the way to their floor, and then fail to board them — capacity is only enforced at pickup time. The fix is non-trivial: current load isn't reliable because passengers may drop off before arrival, so the real solution is to project future load at estimated arrival time.</div>
+        <div class="li-sub">A full elevator can be assigned, travel to the floor, and fail to board. Fix: project future load at estimated arrival time.</div>
       </li>
       <li>
         <div class="li-title">No dynamic reassignment</div>
-        <div class="li-sub">Once a passenger is assigned to an elevator, that assignment is permanent — even if a much better elevator becomes available nearby two ticks later. A smarter system would re-evaluate assignments each tick and switch a passenger to a closer elevator if the time savings exceed a threshold, without causing churn from constant reassignments.</div>
+        <div class="li-sub">Assignment is permanent — a much better elevator nearby won't help once you're assigned.</div>
       </li>
       <li>
         <div class="li-title">No zone-based routing</div>
-        <div class="li-sub">Every elevator serves every floor, which is wasteful in a tall building. If a passenger on floor 2 is assigned to an elevator sitting on floor 58, it travels the full height just for one pickup. A real building would pin elevators to floor ranges — low, mid, high — with a dedicated express bank for the top floors, dramatically reducing average travel distance.</div>
+        <div class="li-sub">All elevators serve all floors. Fix: pin to floor ranges in tall buildings.</div>
       </li>
       <li>
         <div class="li-title">No stress testing</div>
-        <div class="li-sub">The test suite verifies basic correctness on small inputs but there are no stress tests — high passenger volume, tight capacity limits, or adversarial patterns like all passengers requesting the same floor simultaneously. These are exactly the conditions that expose edge cases in scheduling logic, and the capacity deadlock bug discovered during development is a direct example of what stress tests would have caught earlier.</div>
+        <div class="li-sub">Small inputs only. High volume and tight capacity are exactly where scheduling bugs hide.</div>
       </li>
     </ul>
   </div>
